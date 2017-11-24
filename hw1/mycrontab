@@ -1,0 +1,4 @@
+*:*:* echo beep
+*:*:30 echo beep
+*:*:10 ls -l /
+0:31:50 echo carl
