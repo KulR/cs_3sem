@@ -8,8 +8,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
-#include <stdlib.h>     //using for exit
-//#include <sys/types.h> //don't sure that we need
 //#include <iostream>      //for debug
 
 using namespace std;
@@ -20,35 +18,35 @@ struct data {
     pthread_mutex_t* mutex;      //mutex for several threads
 };
 
-int copy_file(string& relative_path, const string& FROM, const string& TO){
+bool copy_file(string& relative_path, const string& FROM, const string& TO){
     string from = FROM + relative_path;
     string to = TO + relative_path;
     struct stat in_stat;
     if(stat(from.c_str(), &in_stat) < 0){
         string temp = "stat file" + from;
         perror(temp.c_str());
-        return -1;
+        return false;
     }
     int in = open(from.c_str(), O_RDONLY);
     if(in < 0){
         string temp = "can't open file" + from + ":";
         perror(temp.c_str());
-        return  -1;
+        return  false;
     }
     struct stat last;
     if(stat(to.c_str(), &last) == 0){
         if(S_ISDIR(last.st_mode)){
-            string temp = "dir with " + to + " existed";
-            perror(temp.c_str());
+            string temp = "dir with " + to + " exist";
+            printf("%s\n",temp.c_str());
             close(in);
-            exit(-1);
+            return false;
         }
         string new_path = to + ".old";
         if(rename(to.c_str(), new_path.c_str()) != 0){
             string temp = "rename " + to + " failed";
             perror(temp.c_str());
             close(in);
-            exit(20);
+            return false;
         }
     }
     int out = open(to.c_str(), O_WRONLY | O_CREAT);
@@ -57,7 +55,7 @@ int copy_file(string& relative_path, const string& FROM, const string& TO){
         string temp = "can't write to " + to;
         perror(temp.c_str());
         close(in);
-        return -1;
+        return false;
     }
     char buf[4096];
     int rd;
@@ -69,7 +67,7 @@ int copy_file(string& relative_path, const string& FROM, const string& TO){
         perror(temp.c_str());
         close(out);
         close(in);
-        return -2;
+        return false;
     }
     struct utimbuf time_buf;
     time_buf.actime = in_stat.st_atime;
@@ -79,37 +77,61 @@ int copy_file(string& relative_path, const string& FROM, const string& TO){
         perror(temp.c_str());
         close(out);
         close(in);
-        return -2;
+        return false;
     }
     if(chmod(to.c_str(), in_stat.st_mode) < 0){
         string temp = to + "failed to change mode";
         perror(temp.c_str());
         close(out);
         close(in);
-        return -2;
+        return false;
     }
     close(out);
     close(in);
-    return 0;
+    return true;
+}
+
+bool make_dir(const string& relative_path,const string& FROM,const string& TO){
+    struct stat buf;
+    string to = TO + relative_path;
+    string from = FROM + relative_path;
+    if(stat(from.c_str(), &buf) != 0){
+        string temp = "stat dir from " + from;
+        perror(temp.c_str());
+        return false;
+    }
+    if(access(to.c_str(),F_OK) == -1) {
+        if (mkdir(to.c_str(), buf.st_mode) != 0) {
+            string temp = "mkdir" + to;
+            perror(temp.c_str());
+            return false;
+        }
+    }
+    else {
+        if (stat(to.c_str(), &buf) < 0) {
+            string temp = "stat file to " + to;
+            perror(temp.c_str());
+            return false;
+        }
+        if (!S_ISDIR(buf.st_mode)) {
+            string temp = to + " is exist and isn't dir";
+            printf("%s\n",temp.c_str());
+            return false;
+        }
+    }
+    return true;
 }
 
 
 
-void Make_queue(vector<string>& queue, string& relative_path,const string& FROM,const string& TO, vector<string>& dir_queue){
+void Make_queue(vector<string>& queue, string& relative_path,const string& FROM,const string& TO){
     string path = FROM + "/" + relative_path;
-    //need see
-    ////
     struct stat buf;
     if(stat(path.c_str(), &buf) != 0){
         string temp = "make queue stat " + path;
         perror(temp.c_str());
-        exit(4);
-    }
-    if(!S_ISDIR(buf.st_mode)){
-        queue.push_back(relative_path);
         return;
     }
-    ////
     DIR* direct = opendir(path.c_str());
     for(struct dirent* de = readdir(direct); de != NULL; de = readdir(direct)){
         if(strcmp(de->d_name, ".") == 0 || strcmp(de ->d_name, "..") == 0)
@@ -121,8 +143,9 @@ void Make_queue(vector<string>& queue, string& relative_path,const string& FROM,
         struct stat buf;
         if(stat(fname.c_str(), &buf) == 0){
             if(S_ISDIR(buf.st_mode)){
-                dir_queue.push_back(relative_fname);
-                Make_queue(queue, relative_fname, FROM, TO, dir_queue);
+                if(make_dir(relative_fname, FROM, TO)){
+                Make_queue(queue, relative_fname, FROM, TO);
+                }
                 continue;
             } else if(S_ISREG(buf.st_mode)) {
                 queue.push_back(relative_fname);
@@ -130,7 +153,7 @@ void Make_queue(vector<string>& queue, string& relative_path,const string& FROM,
             else {
                 string temp = fname + " stat";
                 perror(temp.c_str());
-                exit(4);
+                return;
             }
         }
 
@@ -153,26 +176,6 @@ void* copy(void* arg){
     }
 }
 
-void make_dir(const string& relative_path, string& FROM, string& TO){
-    struct stat buf;
-    string to = TO + relative_path;
-    string from = FROM + relative_path;
-    if(stat(from.c_str(), &buf) != 0){
-        string temp = "stat dir from " + from;
-        perror(temp.c_str());
-        exit(2);
-    }
-    if(access(to.c_str(),F_OK) == -1){
-        if(mkdir(to.c_str(), buf.st_mode) != 0){
-            string temp = "mkdir" + to;
-            perror(temp.c_str());
-            exit(2);
-        }
-    }
-}
-
-
-
 
 int main(int argc, char** argv) {
     if(argc != 4){
@@ -191,22 +194,13 @@ int main(int argc, char** argv) {
     string temp;
     vector<string> dir_queue;
     vector<string> queue;
-    dir_queue.push_back(temp);
-    Make_queue(queue, temp, source, destination, dir_queue);
+    make_dir("", source, destination);
+    Make_queue(queue, temp, source, destination);
 
 /*    //unit test for making queue
     for(int i = 0; i < queue.size(); i++){
         cout << FROM + queue[i] << endl;
     }*/
-
-//        unit test for making dir_queue
-//    for(int i = 0; i < dir_queue.size(); i++){
-//        cout << FROM + dir_queue[i] << endl;
-//    }
-
-    for(int i = 0; i < dir_queue.size(); i++){
-        make_dir(dir_queue[i], source, destination);
-    }
 
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
