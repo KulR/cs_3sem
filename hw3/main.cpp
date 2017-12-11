@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <string>
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
@@ -8,22 +7,17 @@
 #include <stdio.h>
 
 const int mcsins = 1000000;
-
 using namespace std;
-
 
 struct block{
     bool IsBuilt = false;
     int Captured = -1;
 };
-
 /*
 Captured == -1 - not captured
 Captured == 0  - father captured
 Captured == 1  - son captured
-*/
 
-/*
 half == -1 - left half
 half ==  0 - whole block
 half ==  1 - right half
@@ -78,7 +72,6 @@ void PrintWall(const vector<vector<block> >& wall){
             printf("\n");
         }
     }
-//    printf("\n");
 }
 
 struct Data {
@@ -93,7 +86,7 @@ block* Findblock(bool IsSon, Data* a){
         for(int j = 0; j < (*(a->wall))[i].size(); j++){
             if(!((*(a->wall))[i][j].IsBuilt) && (*(a->wall))[i][j].Captured == -1){
                 if(i == 0 && (j ==0 || (*(a->wall))[0][j-1].IsBuilt)){
-                    (*(a->wall))[i][j].Captured = 0;     //first line is put by father
+                    (*(a->wall))[i][j].Captured = IsSon;
                     return &(*(a->wall))[i][j];
                 }
                 else{
@@ -231,6 +224,5 @@ int main() {
         pthread_join(thrds[i], NULL);
     }
     printf("Make great wall again!\n");
-
     return 0;
 }
